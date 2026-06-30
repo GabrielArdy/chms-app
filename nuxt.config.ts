@@ -4,6 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: false,
   css: ['~/assets/css/styles.css'],
+  runtimeConfig: {
+    public: {
+      // Override at build/runtime with NUXT_PUBLIC_API_BASE_URL
+      apiBaseUrl: 'http://localhost:8080',
+    },
+  },
   app: {
     head: {
       title: 'ChurchMS — Sanctuary OS',

@@ -8,6 +8,11 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
+# API base URL is baked into the static bundle at build time.
+# Override: docker build --build-arg API_BASE_URL=https://api.gereja.org
+ARG API_BASE_URL=http://localhost:8080
+ENV NUXT_PUBLIC_API_BASE_URL=$API_BASE_URL
+
 # Build static SPA (ssr: false -> nuxt generate emits .output/public)
 COPY . .
 RUN bun run generate
