@@ -19,7 +19,10 @@ RUN bun run generate
 
 # ---- Runtime stage ----
 FROM nginx:1.27-alpine AS runtime
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Template processed by envsubst at boot (20-envsubst-on-templates.sh).
+# ${PORT} filled from Railway-injected env; default 80 for local runs.
+ENV PORT=80
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/.output/public /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
