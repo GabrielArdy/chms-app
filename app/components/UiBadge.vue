@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 defineProps({ kind: { type: String, default: 'slate' }, dot: Boolean })
 </script>
 

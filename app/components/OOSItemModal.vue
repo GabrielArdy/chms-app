@@ -1,7 +1,7 @@
-<script setup>
+<script setup lang="ts">
 import { reactive, computed } from 'vue'
 
-const props = defineProps({ item: Object, nextSeq: Number })
+const props = defineProps({ item: Object, nextSeq: Number, saving: Boolean })
 const emit = defineEmits(['close', 'save'])
 
 const PIC_ROLES = ['Multimedia', 'Soundman', 'Worship Leader', 'Liturgist']
@@ -43,7 +43,7 @@ const save = () => emit('save', { ...f, song_id: f.song_id || null })
     </UiField>
     <template #footer>
       <button class="btn btn-ghost" @click="emit('close')">Batal</button>
-      <button class="btn btn-primary" :disabled="!valid" @click="save"><AppIcon name="check" />{{ item ? 'Simpan Perubahan' : 'Tambahkan' }}</button>
+      <button class="btn btn-primary" :disabled="!valid || props.saving" @click="save"><AppIcon name="check" />{{ props.saving ? 'Menyimpan…' : (item ? 'Simpan Perubahan' : 'Tambahkan') }}</button>
     </template>
   </UiModal>
 </template>

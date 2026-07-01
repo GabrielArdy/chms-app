@@ -1,12 +1,15 @@
-<script setup>
+<script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DB } from '~/data/db'
 
 const route = useRoute()
 const router = useRouter()
-const { logout } = useAuth()
+const { logout, user } = useAuth()
 
 const isActive = (path) => route.path === path
+
+const displayName = computed(() => user.value?.full_name || user.value?.email || 'Pengguna')
+const roleLabel = computed(() => (user.value?.roles || []).join(' · ') || '—')
 
 const doLogout = () => { logout(); router.push('/login') }
 </script>
@@ -37,10 +40,10 @@ const doLogout = () => { logout(); router.push('/login') }
       <div class="nav-section">
         <div class="nav-section-label">Pelayanan</div>
         <NuxtLink to="/households" :class="['nav-item', isActive('/households') ? 'active' : '']">
-          <AppIcon name="users" /><span>Jemaat</span><span class="nav-badge">{{ DB.households.length }}</span>
+          <AppIcon name="users" /><span>Jemaat</span>
         </NuxtLink>
         <NuxtLink to="/announcements" :class="['nav-item', isActive('/announcements') ? 'active' : '']">
-          <AppIcon name="megaphone" /><span>Warta</span><span class="nav-badge gold">3</span>
+          <AppIcon name="megaphone" /><span>Warta</span>
         </NuxtLink>
         <NuxtLink to="/rite" :class="['nav-item', isActive('/rite') ? 'active' : '']">
           <AppIcon name="book" /><span>Ibadah &amp; Liturgi</span>
@@ -69,10 +72,10 @@ const doLogout = () => { logout(); router.push('/login') }
     </nav>
 
     <div class="sidebar-foot">
-      <div class="avatar">{{ DB.initials(DB.user.full_name) }}</div>
+      <div class="avatar">{{ initials(displayName) }}</div>
       <div style="min-width:0;flex:1">
-        <div class="who">{{ DB.user.full_name }}</div>
-        <div class="role">{{ DB.user.roles.join(' · ') }}</div>
+        <div class="who">{{ displayName }}</div>
+        <div class="role">{{ roleLabel }}</div>
       </div>
       <button class="nav-item" style="width:auto;padding:8px" title="Keluar" @click="doLogout">
         <AppIcon name="logout" />

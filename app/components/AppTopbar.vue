@@ -1,9 +1,13 @@
-<script setup>
+<script setup lang="ts">
 defineProps({ crumbs: { type: Array, default: () => [] } })
+const navOpen = useNav()
 </script>
 
 <template>
   <header class="topbar">
+    <button class="icon-btn nav-toggle" title="Menu" @click="navOpen = !navOpen">
+      <AppIcon name="menu" :width="20" :height="20" />
+    </button>
     <div class="crumb">
       <template v-for="(c, i) in crumbs" :key="i">
         <span v-if="i > 0" style="margin:0 8px;color:var(--outline)">/</span>

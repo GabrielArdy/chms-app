@@ -1,13 +1,12 @@
-<script setup>
+<script setup lang="ts">
 import { reactive, computed } from 'vue'
-import { DB } from '~/data/db'
 
-const props = defineProps({ period: Object, existingRefs: { type: Array, default: () => [] } })
+const props = defineProps({ period: Object, existingRefs: { type: Array, default: () => [] }, saving: Boolean })
 const emit = defineEmits(['close', 'save'])
 
-const f = reactive({ period_id: props.period.id, budget_post_id: 2, transaction_type: 'Debit', amount: '', description: '', reference_code: '' })
+const f = reactive({ period_id: props.period?.id || null, budget_post_id: null, transaction_type: 'Debit', amount: '', description: '', reference_code: '' })
 const dupRef = computed(() => f.reference_code && props.existingRefs.includes(f.reference_code))
-const valid = computed(() => f.amount > 0 && f.description.trim() && f.reference_code.trim() && !dupRef.value)
+const valid = computed(() => f.period_id > 0 && f.budget_post_id > 0 && f.amount > 0 && f.description.trim() && f.reference_code.trim() && !dupRef.value)
 
 const types = [
   { v: 'Debit', l: 'Penerimaan (Masuk)', ic: 'arrowDn', tone: 'em' },
@@ -36,17 +35,18 @@ const save = () => emit('save', { ...f, amount: +f.amount })
         </button>
       </div>
     </UiField>
-    <div class="field-row">
-      <UiField label="Jumlah" required hint="Harus lebih besar dari 0">
+    <div class="field-row-3">
+      <UiField label="Period ID" required hint="tidak ada endpoint daftar">
+        <input class="input" type="number" min="1" v-model.number="f.period_id" placeholder="4" >
+      </UiField>
+      <UiField label="Pos Anggaran ID" required hint="budget_post_id">
+        <input class="input" type="number" min="1" v-model.number="f.budget_post_id" placeholder="2" >
+      </UiField>
+      <UiField label="Jumlah" required hint="> 0">
         <div class="input-group">
           <span class="pre">Rp</span>
           <input type="number" v-model="f.amount" placeholder="7.500.000" >
         </div>
-      </UiField>
-      <UiField label="Pos Anggaran" required>
-        <select class="select" v-model.number="f.budget_post_id">
-          <option v-for="b in DB.budget_posts" :key="b.id" :value="b.id">{{ b.name }}</option>
-        </select>
       </UiField>
     </div>
     <UiField label="Deskripsi" required :hint="f.transaction_type === 'Debit' ? 'Sebutkan kanal dana (QRIS / Transfer / Tunai)' : 'Sebutkan alokasi pengeluaran'">
@@ -59,7 +59,7 @@ const save = () => emit('save', { ...f, amount: +f.amount })
     <template #footer>
       <span class="row muted" style="margin-right:auto;gap:7px;font-size:13px"><AppIcon name="shield" :width="15" :height="15" />Entri bersifat permanen &amp; tidak dapat diubah</span>
       <button class="btn btn-ghost" @click="emit('close')">Batal</button>
-      <button class="btn btn-emerald" :disabled="!valid" @click="save"><AppIcon name="check" />Catat ke Ledger</button>
+      <button class="btn btn-emerald" :disabled="!valid || props.saving" @click="save"><AppIcon name="check" />{{ props.saving ? 'Mencatat…' : 'Catat ke Ledger' }}</button>
     </template>
   </UiModal>
 </template>

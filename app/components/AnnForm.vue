@@ -1,10 +1,11 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { DB } from '~/data/db'
 import { CATEGORIES, CAT_LABEL } from '~/data/announce'
 
-const props = defineProps({ item: Object })
+const props = defineProps({ item: Object, saving: Boolean })
 const emit = defineEmits(['close', 'save'])
+const api = useApiClient()
+const toast = useToast()
 
 const editing = computed(() => !!props.item)
 const it = props.item
@@ -13,24 +14,38 @@ const f = reactive(it
   : { title: '', content: '', category: 'General', status: 'Draft', publish_date: '2026-06-15', expiry_date: '2026-06-30', is_pinned: false, attachment_ids: [], trigger_notification: false, target_channels: ['whatsapp', 'push_notification'] })
 
 const uploads = ref([])
+const uploading = ref(false)
 const fileInput = ref(null)
 const valid = computed(() => f.title.trim() && f.content.trim() && f.publish_date && f.expiry_date)
 
-const lookup = (id) => DB.fileById(id) || uploads.value.find(u => u.file_id === id)
+// Known meta comes from this session's uploads; pre-existing UUIDs render a stub chip.
+const newIds = ref(new Set())
+const lookup = (id) => uploads.value.find(u => u.file_id === id) || { file_id: id, original_name: 'Lampiran ' + String(id).slice(0, 8), mime_type: '', size_bytes: 0 }
 const isImg = (mime) => (mime || '').startsWith('image')
 
 const toggleCh = (ch) => { f.target_channels = f.target_channels.includes(ch) ? f.target_channels.filter(c => c !== ch) : [...f.target_channels, ch] }
 
-const onPick = (e) => {
+const onPick = async (e) => {
   const files = Array.from(e.target.files || [])
   const ok = files.filter(file => ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type))
-  const recs = ok.map(file => ({ file_id: 'up-' + Math.random().toString(36).slice(2, 10), original_name: file.name, mime_type: file.type, size_bytes: file.size }))
-  uploads.value = [...uploads.value, ...recs]
-  f.attachment_ids = [...f.attachment_ids, ...recs.map(r => r.file_id)]
   e.target.value = ''
+  if (!ok.length) return
+  uploading.value = true
+  try {
+    for (const file of ok) {
+      const rec = await api.uploadFile(file) // { file_id, original_name, mime_type, size_bytes }
+      uploads.value = [...uploads.value, rec]
+      newIds.value.add(rec.file_id)
+      f.attachment_ids = [...f.attachment_ids, rec.file_id]
+    }
+  } catch (err) {
+    toast.error(err.message || 'Gagal mengunggah berkas.')
+  } finally {
+    uploading.value = false
+  }
 }
 const removeAttach = (id) => { f.attachment_ids = f.attachment_ids.filter(x => x !== id) }
-const metaLine = (id) => { const file = lookup(id); return DB.fmtBytes(file.size_bytes) + (String(id).startsWith('up-') ? ' • baru diunggah' : ' • ' + id.slice(0, 8)) }
+const metaLine = (id) => { const file = lookup(id); return fmtBytes(file.size_bytes) + (newIds.value.has(id) ? ' • baru diunggah' : ' • ' + String(id).slice(0, 8)) }
 
 const submit = (status) => emit('save', { ...f, status, is_notification_triggered: f.trigger_notification, notification_channels: f.trigger_notification ? Object.fromEntries(f.target_channels.map(c => [c, 'pending_integration'])) : {} })
 
@@ -82,9 +97,9 @@ const channels = [['whatsapp', 'WhatsApp Gateway'], ['push_notification', 'Push 
                 </template>
               </div>
             </div>
-            <div class="dropzone" @click="fileInput && fileInput.click()">
+            <div class="dropzone" @click="!uploading && fileInput && fileInput.click()">
               <AppIcon name="upload" :width="22" :height="22" style="color:var(--primary-container)" />
-              <div style="font-size:13.5px;font-weight:600;margin-top:8px">Klik untuk mengunggah berkas</div>
+              <div style="font-size:13.5px;font-weight:600;margin-top:8px">{{ uploading ? 'Mengunggah…' : 'Klik untuk mengunggah berkas' }}</div>
               <div class="muted" style="font-size:12px;margin-top:3px">PDF, PNG, JPG, WebP • multipart/form-data</div>
             </div>
           </UiField>
@@ -125,8 +140,8 @@ const channels = [['whatsapp', 'WhatsApp Gateway'], ['push_notification', 'Push 
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" @click="emit('close')">Batal</button>
-        <button v-if="!editing" class="btn btn-ghost" @click="submit('Draft')">Simpan Draf</button>
-        <button class="btn btn-primary" :disabled="!valid" @click="submit(f.status)"><AppIcon name="check" />{{ editing ? 'Simpan Perubahan' : 'Simpan Warta' }}</button>
+        <button v-if="!editing" class="btn btn-ghost" :disabled="props.saving || uploading" @click="submit('Draft')">Simpan Draf</button>
+        <button class="btn btn-primary" :disabled="!valid || props.saving || uploading" @click="submit(f.status)"><AppIcon name="check" />{{ props.saving ? 'Menyimpan…' : (editing ? 'Simpan Perubahan' : 'Simpan Warta') }}</button>
       </div>
     </div>
   </div>

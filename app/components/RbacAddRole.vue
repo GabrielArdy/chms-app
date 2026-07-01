@@ -1,28 +1,25 @@
-<script setup>
-import { computed } from 'vue'
-import { DB } from '~/data/db'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 
-const props = defineProps({ g: Object })
+defineProps({ g: Object })
 const emit = defineEmits(['close', 'add'])
 
-const candidates = computed(() => DB.roles.filter(r => !props.g.role_ids.includes(r.id)))
+const roleId = ref('')
+const valid = computed(() => /^\d+$/.test(roleId.value))
 </script>
 
 <template>
   <UiModal :title="'Tambah Peran ke ' + g.name" icon="shield" @close="emit('close')">
-    <div v-if="candidates.length" style="display:flex;flex-direction:column;gap:8px">
-      <div v-for="r in candidates" :key="r.id" class="row" style="gap:12px;padding:12px 14px;border:1px solid var(--outline-variant);border-radius:6px">
-        <span class="k-icon" style="width:36px;height:36px;border-radius:8px"><AppIcon name="shield" :width="18" :height="18" /></span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:14px">{{ r.name }}</div>
-          <div class="muted" style="font-size:12.5px">{{ r.description }}</div>
-        </div>
-        <button class="btn btn-primary btn-sm" @click="emit('add', r.id)"><AppIcon name="plus" />Tambah</button>
-      </div>
-    </div>
-    <div v-else class="empty-ph" style="padding:24px">Semua peran sudah ditetapkan</div>
+    <UiNote kind="blue" icon="info">
+      <span>Masukkan <span class="code">role_id</span>. Katalog peran tidak tersedia sebagai endpoint tersendiri di API.</span>
+    </UiNote>
+    <div style="height:14px" />
+    <UiField label="Role ID" required hint="POST /groups/{id}/roles → { role_id }">
+      <input class="input" v-model="roleId" inputmode="numeric" placeholder="mis. 2" autofocus >
+    </UiField>
     <template #footer>
-      <button class="btn btn-ghost" @click="emit('close')">Tutup</button>
+      <button class="btn btn-ghost" @click="emit('close')">Batal</button>
+      <button class="btn btn-primary" :disabled="!valid" @click="emit('add', Number(roleId))"><AppIcon name="plus" />Tambah Peran</button>
     </template>
   </UiModal>
 </template>

@@ -1,5 +1,5 @@
-<script setup>
-import { DB } from '~/data/db'
+<script setup lang="ts">
+// Decorative login panel — no data dependency (renders pre-auth).
 </script>
 
 <template>
@@ -26,8 +26,8 @@ import { DB } from '~/data/db'
       <p style="color:#c3d2ea;margin-top:18px;font-size:15px;line-height:1.6;max-width:34ch">Satu pusat data untuk jemaat, ibadah, warta, dan keuangan gereja — terlindungi dan dapat dipertanggungjawabkan.</p>
     </div>
     <div class="a-meta">
-      <div><b>{{ DB.totalMembers }}</b>Jemaat aktif</div>
-      <div><b>{{ DB.households.length }}</b>Rumah tangga</div>
+      <div><b>RBAC</b>Kontrol akses dinamis</div>
+      <div><b>Ledger</b>Kas append-only</div>
       <div><b>2FA</b>Keamanan Bendahara</div>
     </div>
   </div>

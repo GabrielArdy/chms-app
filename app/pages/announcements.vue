@@ -1,10 +1,17 @@
-<script setup>
-import { ref, computed } from 'vue'
-import { DB } from '~/data/db'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 import { CATEGORIES, CAT_LABEL, CAT_TONE, STATUS_LABEL, TODAY, PAGE_SIZE, sortFeed } from '~/data/announce'
 import { STATUS_BADGE } from '~/data/constants'
 
-const items = ref([...DB.announcements].sort(sortFeed))
+const api = useApiClient()
+const toast = useToast()
+
+const items = ref([])
+const publicItems = ref([])
+const loading = ref(true)
+const error = ref('')
+const saving = ref(false)
+
 const view = ref('admin')
 const editing = ref(null) // 'new' | item | null
 const detail = ref(null)
@@ -14,9 +21,31 @@ const catFilter = ref('Semua')
 const from = ref('')
 const to = ref('')
 const page = ref(1)
-const toast = ref(null)
 
-const flash = (msg) => { toast.value = msg; setTimeout(() => { toast.value = null }, 3200) }
+const flash = (msg) => toast.info(msg)
+
+// Admin list — pull up to 100 and filter/paginate client-side (max limit per docs).
+const loadAdmin = async () => {
+  loading.value = true; error.value = ''
+  try {
+    const res = await api.listAnnouncements({ page: 1, limit: 100 })
+    items.value = (res?.announcements || []).sort(sortFeed)
+  } catch (e) {
+    error.value = e.message || 'Gagal memuat daftar warta.'
+  } finally {
+    loading.value = false
+  }
+}
+const loadPublic = async () => {
+  try {
+    const res = await api.listPublicAnnouncements({ page: 1, limit: 100 })
+    publicItems.value = (res?.announcements || []).sort(sortFeed)
+  } catch (e) {
+    toast.error(e.message || 'Gagal memuat pratinjau publik.')
+  }
+}
+onMounted(() => { loadAdmin(); loadPublic() })
+
 const statuses = ['Semua', 'Published', 'Draft', 'Archived']
 const statusChip = (s) => s === 'Published' ? 'Tayang' : s === 'Draft' ? 'Draf' : s === 'Archived' ? 'Arsip' : 'Semua'
 
@@ -26,27 +55,67 @@ const filtered = computed(() => items.value.filter(a =>
   (!from.value || a.publish_date >= from.value) && (!to.value || a.publish_date <= to.value)))
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
 const pageRows = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
-const publicItems = computed(() => items.value.filter(a => a.status === 'Published' && a.publish_date <= TODAY && (!a.expiry_date || a.expiry_date >= TODAY)).sort(sortFeed))
 
 const countStatus = (s) => items.value.filter(i => i.status === s).length
 const countPinned = computed(() => items.value.filter(i => i.is_pinned).length)
 
 const resetPage = () => { page.value = 1 }
 
-const upsert = (ann) => {
-  if (ann.id) {
-    items.value = items.value.map(i => i.id === ann.id ? { ...i, ...ann, updated_at: TODAY + 'T09:00:00Z' } : i).sort(sortFeed)
-    flash('Warta "' + ann.title + '" berhasil diperbarui (PUT).')
-  } else {
-    const id = Math.max(...items.value.map(i => i.id)) + 1
-    items.value = [{ ...ann, id, author_id: 15, author_name: DB.user.full_name, created_at: TODAY + 'T09:00:00Z', updated_at: TODAY + 'T09:00:00Z' }, ...items.value].sort(sortFeed)
-    flash('Warta berhasil disimpan (POST).')
+// Build the full-replacement body PUT/POST expect from a form or list item.
+const toBody = (a) => ({
+  title: a.title, content: a.content, category: a.category, status: a.status,
+  publish_date: a.publish_date, expiry_date: a.expiry_date,
+  is_pinned: !!a.is_pinned, attachment_ids: a.attachment_ids || [],
+})
+
+const upsert = async (ann) => {
+  saving.value = true
+  try {
+    if (ann.id) {
+      const updated = await api.updateAnnouncement(ann.id, toBody(ann))
+      items.value = items.value.map(i => i.id === ann.id ? { ...i, ...updated } : i).sort(sortFeed)
+      flash('Warta "' + ann.title + '" berhasil diperbarui.')
+    } else {
+      const created = await api.createAnnouncement({
+        ...toBody(ann),
+        trigger_notification: !!ann.trigger_notification,
+        target_channels: ann.target_channels || [],
+      })
+      items.value = [{ ...ann, ...created }, ...items.value].sort(sortFeed)
+      flash('Warta berhasil disimpan.')
+    }
+    editing.value = null
+    loadPublic()
+  } catch (e) {
+    toast.error(e.message || 'Gagal menyimpan warta.')
+  } finally {
+    saving.value = false
   }
-  editing.value = null
 }
-const patchStatus = (a, status) => { items.value = items.value.map(i => i.id === a.id ? { ...i, status } : i).sort(sortFeed); flash('Status "' + a.title + '" → ' + status + ' (PATCH).') }
-const togglePin = (a) => { items.value = items.value.map(i => i.id === a.id ? { ...i, is_pinned: !i.is_pinned } : i).sort(sortFeed); flash(a.is_pinned ? 'Sematan dilepas.' : 'Warta disematkan ke atas.') }
-const del = (a) => { items.value = items.value.filter(i => i.id !== a.id); flash('Warta "' + a.title + '" dihapus permanen (DELETE 204).') }
+const patchStatus = async (a, status) => {
+  try {
+    const updated = await api.setAnnouncementStatus(a.id, status)
+    items.value = items.value.map(i => i.id === a.id ? { ...i, ...updated } : i).sort(sortFeed)
+    flash('Status "' + a.title + '" → ' + status + '.')
+    loadPublic()
+  } catch (e) { toast.error(e.message || 'Gagal mengubah status.') }
+}
+const togglePin = async (a) => {
+  try {
+    const updated = await api.updateAnnouncement(a.id, { ...toBody(a), is_pinned: !a.is_pinned })
+    items.value = items.value.map(i => i.id === a.id ? { ...i, ...updated } : i).sort(sortFeed)
+    flash(a.is_pinned ? 'Sematan dilepas.' : 'Warta disematkan ke atas.')
+    loadPublic()
+  } catch (e) { toast.error(e.message || 'Gagal mengubah sematan.') }
+}
+const del = async (a) => {
+  try {
+    await api.deleteAnnouncement(a.id)
+    items.value = items.value.filter(i => i.id !== a.id)
+    flash('Warta "' + a.title + '" dihapus permanen.')
+    loadPublic()
+  } catch (e) { toast.error(e.message || 'Gagal menghapus warta.') }
+}
 
 const rowMenu = (a) => [
   { label: 'Lihat Detail', icon: 'external', onClick: () => { detail.value = a } },
@@ -78,8 +147,6 @@ const resetFilters = () => { from.value = ''; to.value = ''; catFilter.value = '
       </template>
     </UiPageHead>
 
-    <div v-if="toast" class="fade-in" style="margin-bottom:18px"><UiNote kind="emerald" icon="check">{{ toast }}</UiNote></div>
-
     <div v-if="view === 'admin'">
       <div class="kpi-grid">
         <UiKpi label="Total Warta" icon="megaphone" :value="String(items.length)" foot="sepanjang waktu" />
@@ -88,6 +155,8 @@ const resetFilters = () => { from.value = ''; to.value = ''; catFilter.value = '
         <UiKpi label="Tersemat" icon="pin" :value="String(countPinned)" foot="pinned di feed" />
       </div>
 
+      <UiState :loading="loading" :error="error" :empty="!items.length"
+               empty-text="Belum ada warta." empty-icon="megaphone" @retry="loadAdmin">
       <div class="tbl-wrap">
         <div class="tbl-toolbar" style="flex-wrap:wrap">
           <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -122,7 +191,7 @@ const resetFilters = () => { from.value = ''; to.value = ''; catFilter.value = '
               <td><UiBadge :kind="CAT_TONE[a.category]">{{ CAT_LABEL[a.category] }}</UiBadge></td>
               <td><UiBadge :kind="STATUS_BADGE[a.status]" dot>{{ STATUS_LABEL[a.status] }}</UiBadge></td>
               <td class="muted" style="font-size:13px">{{ a.author_name || '—' }}</td>
-              <td class="muted" style="font-size:13px">{{ DB.idDate(a.publish_date) }} – {{ a.expiry_date ? DB.idDate(a.expiry_date) : '∞' }}</td>
+              <td class="muted" style="font-size:13px">{{ idDate(a.publish_date) }} – {{ a.expiry_date ? idDate(a.expiry_date) : '∞' }}</td>
               <td style="text-align:center">
                 <span v-if="a.attachment_ids && a.attachment_ids.length" class="badge badge-slate"><AppIcon name="paperclip" :width="12" :height="12" />{{ a.attachment_ids.length }}</span>
                 <span v-else class="muted">—</span>
@@ -140,11 +209,12 @@ const resetFilters = () => { from.value = ''; to.value = ''; catFilter.value = '
           </div>
         </div>
       </div>
+      </UiState>
     </div>
 
     <PublicFeed v-else :items="publicItems" @open="detail = $event" />
 
-    <AnnForm v-if="editing" :item="editing === 'new' ? null : editing" @close="editing = null" @save="upsert" />
+    <AnnForm v-if="editing" :item="editing === 'new' ? null : editing" :saving="saving" @close="editing = null" @save="upsert" />
     <AnnDetail v-if="detail" :a="detail" @close="detail = null" @edit="editFromDetail" @flash="flash" />
     <UiConfirm v-if="confirm" title="Hapus Warta" danger icon="trash" confirm-label="Hapus Permanen" @close="confirm = null" @confirm="del(confirm)">
       <span>Warta <b>"{{ confirm.title }}"</b> akan dihapus permanen (<span class="code">DELETE /admin/announcements/{{ confirm.id }}</span> → 204). Tindakan ini tidak dapat dibatalkan.</span>

@@ -1,27 +1,50 @@
-<script setup>
-import { ref, reactive, computed } from 'vue'
-import { DB } from '~/data/db'
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
 import { MEMBERSHIP_BADGE } from '~/data/constants'
 
-const households = ref([...DB.households])
+const api = useApiClient()
+const toast = useToast()
+
+const households = ref([])
+const loading = ref(true)
+const error = ref('')
+const saving = ref(false)
+
+const load = async () => {
+  loading.value = true; error.value = ''
+  try { households.value = (await api.listHouseholds()) || [] }
+  catch (e) { error.value = e.message || 'Gagal memuat data jemaat.' }
+  finally { loading.value = false }
+}
+onMounted(load)
+
 const selected = ref(null)
 const creating = ref(false)
 const addMemberFor = ref(null)
 const density = ref('spacious')
 const filter = ref('Semua')
 
+const membersOf = (h) => h.members || []
 const filters = ['Semua', 'Jemaat Tetap', 'Simpatisan', 'Pindah']
-const rows = computed(() => households.value.filter(h => filter.value === 'Semua' || h.members.some(m => m.membership_status === filter.value)))
+const rows = computed(() => households.value.filter(h => filter.value === 'Semua' || membersOf(h).some(m => m.membership_status === filter.value)))
 
-const countMembership = (s) => households.value.flatMap(h => h.members).filter(m => m.membership_status === s).length
-const headOf = (h) => h.members.find(m => m.household_role === 'Kepala Keluarga') || h.members[0]
-const statusOf = (h) => h.members.some(m => m.membership_status === 'Jemaat Tetap') ? 'Jemaat Tetap' : headOf(h).membership_status
+const totalMembers = computed(() => households.value.reduce((a, h) => a + membersOf(h).length, 0))
+const countMembership = (s) => households.value.flatMap(membersOf).filter(m => m.membership_status === s).length
+const headOf = (h) => membersOf(h).find(m => m.household_role === 'Kepala Keluarga') || membersOf(h)[0] || {}
+const statusOf = (h) => membersOf(h).some(m => m.membership_status === 'Jemaat Tetap') ? 'Jemaat Tetap' : (headOf(h).membership_status || '—')
 
-const addHousehold = (hh) => {
-  const id = households.value.length + 1
-  const members = hh.members.map(m => ({ ...m, household_id: id }))
-  households.value = [{ ...hh, id, members }, ...households.value]
-  creating.value = false
+const addHousehold = async (payload) => {
+  saving.value = true
+  try {
+    const hh = await api.createHousehold(payload)
+    households.value = [hh, ...households.value]
+    creating.value = false
+    toast.success('Rumah tangga berhasil didaftarkan.')
+  } catch (e) {
+    toast.error(e.message || 'Gagal mendaftarkan rumah tangga.')
+  } finally {
+    saving.value = false
+  }
 }
 
 const MEMBER_DEFAULT = { full_name: '', household_role: 'Anak', gender: 'Laki-laki', birth_date: '', phone_number: '', baptism_status: 'Belum', marriage_status: 'Belum Kawin', membership_status: 'Simpatisan' }
@@ -29,12 +52,20 @@ const newMember = reactive({ ...MEMBER_DEFAULT })
 const openAddMember = (h) => { Object.assign(newMember, MEMBER_DEFAULT); addMemberFor.value = h }
 const newMemberValid = computed(() => newMember.full_name.trim() && newMember.birth_date)
 
-const addMember = () => {
+const addMember = async () => {
   const hid = addMemberFor.value.id
-  const m = { ...newMember, id: Date.now(), household_id: hid }
-  households.value = households.value.map(h => h.id === hid ? { ...h, members: [...h.members, m] } : h)
-  if (selected.value && selected.value.id === hid) selected.value = { ...selected.value, members: [...selected.value.members, m] }
-  addMemberFor.value = null
+  saving.value = true
+  try {
+    const m = await api.addMember(hid, { ...newMember, phone_number: newMember.phone_number || null })
+    households.value = households.value.map(h => h.id === hid ? { ...h, members: [...membersOf(h), m] } : h)
+    if (selected.value && selected.value.id === hid) selected.value = { ...selected.value, members: [...membersOf(selected.value), m] }
+    addMemberFor.value = null
+    toast.success('Anggota keluarga berhasil ditambahkan.')
+  } catch (e) {
+    toast.error(e.message || 'Gagal menambahkan anggota.')
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -48,12 +79,14 @@ const addMember = () => {
     </UiPageHead>
 
     <div class="kpi-grid">
-      <UiKpi label="Total Jemaat" icon="users" :value="String(DB.totalMembers)" foot="di seluruh rumah tangga" />
+      <UiKpi label="Total Jemaat" icon="users" :value="String(totalMembers)" foot="di seluruh rumah tangga" />
       <UiKpi label="Jemaat Tetap" icon="check" tone="em" :value="String(countMembership('Jemaat Tetap'))" foot="status aktif" />
       <UiKpi label="Simpatisan" icon="star" tone="gd" :value="String(countMembership('Simpatisan'))" foot="dalam pembinaan" />
       <UiKpi label="Rumah Tangga" icon="home" :value="String(households.length)" foot="terdaftar" />
     </div>
 
+    <UiState :loading="loading" :error="error" :empty="!households.length"
+             empty-text="Belum ada rumah tangga terdaftar." empty-icon="home" @retry="load">
     <div class="tbl-wrap">
       <div class="tbl-toolbar">
         <div class="row" style="gap:8px">
@@ -82,11 +115,11 @@ const addMember = () => {
                 <UiAvatar :name="headOf(h).full_name" />
                 <div>
                   <div style="font-weight:500">{{ headOf(h).full_name }}</div>
-                  <div class="cell-sub">{{ headOf(h).gender }} • {{ DB.age(headOf(h).birth_date) }} th</div>
+                  <div class="cell-sub">{{ headOf(h).gender }} • {{ age(headOf(h).birth_date) }} th</div>
                 </div>
               </div>
             </td>
-            <td><span class="badge badge-slate">{{ h.members.length }} orang</span></td>
+            <td><span class="badge badge-slate">{{ membersOf(h).length }} orang</span></td>
             <td class="muted" style="max-width:240px">
               <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.address }}</div>
             </td>
@@ -104,6 +137,7 @@ const addMember = () => {
         </div>
       </div>
     </div>
+    </UiState>
 
     <!-- Detail modal -->
     <UiModal v-if="selected" :title="selected.household_name" icon="home" size="lg" @close="selected = null">
@@ -114,14 +148,14 @@ const addMember = () => {
       <div class="t-label" style="margin-bottom:12px">{{ selected.members.length }} Anggota Keluarga</div>
       <div style="display:flex;flex-direction:column;gap:10px">
         <div v-for="m in selected.members" :key="m.id" class="card" style="padding:14px;display:flex;gap:14px;align-items:center">
-          <div class="av" style="width:44px;height:44px;font-size:15px">{{ DB.initials(m.full_name) }}</div>
+          <div class="av" style="width:44px;height:44px;font-size:15px">{{ initials(m.full_name) }}</div>
           <div style="flex:1;min-width:0">
             <div class="row" style="gap:8px">
               <span style="font-weight:600;font-size:15px">{{ m.full_name }}</span>
               <span v-if="m.user_id" class="badge badge-blue" title="Memiliki akun aplikasi"><AppIcon name="key" :width="11" :height="11" />Akun</span>
             </div>
             <div class="muted" style="font-size:12.5px;margin-top:3px">
-              {{ m.household_role }} • {{ m.gender }} • {{ DB.age(m.birth_date) }} tahun{{ m.phone_number ? ' • ' + m.phone_number : '' }}
+              {{ m.household_role }} • {{ m.gender }} • {{ age(m.birth_date) }} tahun{{ m.phone_number ? ' • ' + m.phone_number : '' }}
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
@@ -141,14 +175,14 @@ const addMember = () => {
     </UiModal>
 
     <!-- Create household -->
-    <CreateHousehold v-if="creating" @close="creating = false" @create="addHousehold" />
+    <CreateHousehold v-if="creating" :saving="saving" @close="creating = false" @create="addHousehold" />
 
     <!-- Add member -->
     <UiModal v-if="addMemberFor" :title="'Tambah Anggota — ' + addMemberFor.household_name" icon="user" size="lg" @close="addMemberFor = null">
       <MemberForm :model="newMember" />
       <template #footer>
         <button class="btn btn-ghost" @click="addMemberFor = null">Batal</button>
-        <button class="btn btn-primary" :disabled="!newMemberValid" @click="addMember"><AppIcon name="plus" />Tambahkan Anggota</button>
+        <button class="btn btn-primary" :disabled="!newMemberValid || saving" @click="addMember"><AppIcon name="plus" />{{ saving ? 'Menyimpan…' : 'Tambahkan Anggota' }}</button>
       </template>
     </UiModal>
   </div>

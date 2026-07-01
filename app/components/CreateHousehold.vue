@@ -1,7 +1,7 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { DB } from '~/data/db'
 
+const props = defineProps({ saving: Boolean })
 const emit = defineEmits(['close', 'create'])
 
 const step = ref(0)
@@ -22,7 +22,11 @@ const canNext = computed(() =>
   : true)
 
 const onScrim = (e) => { if (e.target === e.currentTarget) emit('close') }
-const save = () => emit('create', { ...hh, members: [{ ...member, id: Date.now() }] })
+const save = () => emit('create', {
+  household_name: hh.household_name,
+  address: hh.address || null,
+  primary_member: { ...member, phone_number: member.phone_number || null },
+})
 </script>
 
 <template>
@@ -68,7 +72,7 @@ const save = () => emit('create', { ...hh, members: [{ ...member, id: Date.now()
               <hr class="divider" style="margin:16px 0" >
               <div class="t-label" style="margin-bottom:10px">Jemaat Pertama</div>
               <div class="row" style="gap:12px">
-                <div class="av" style="width:42px;height:42px">{{ DB.initials(member.full_name || '?') }}</div>
+                <div class="av" style="width:42px;height:42px">{{ initials(member.full_name || '?') }}</div>
                 <div>
                   <div style="font-weight:600">{{ member.full_name || '—' }}</div>
                   <div class="muted" style="font-size:13px">{{ member.household_role }} • {{ member.gender }} • Baptis {{ member.baptism_status }}</div>
@@ -82,7 +86,7 @@ const save = () => emit('create', { ...hh, members: [{ ...member, id: Date.now()
         <span class="muted" style="margin-right:auto;font-size:13px;align-self:center">Langkah {{ step + 1 }} dari 3</span>
         <button v-if="step > 0" class="btn btn-ghost" @click="step--"><AppIcon name="chevL" />Kembali</button>
         <button v-if="step < 2" class="btn btn-primary" :disabled="!canNext" @click="step++">Lanjut<AppIcon name="chevR" /></button>
-        <button v-else class="btn btn-emerald" @click="save"><AppIcon name="check" />Simpan Rumah Tangga</button>
+        <button v-else class="btn btn-emerald" :disabled="props.saving" @click="save"><AppIcon name="check" />{{ props.saving ? 'Menyimpan…' : 'Simpan Rumah Tangga' }}</button>
       </div>
     </div>
   </div>

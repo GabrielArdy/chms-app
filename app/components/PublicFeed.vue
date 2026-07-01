@@ -1,5 +1,4 @@
-<script setup>
-import { DB } from '~/data/db'
+<script setup lang="ts">
 import { CAT_LABEL, CAT_TONE } from '~/data/announce'
 
 defineProps({ items: { type: Array, default: () => [] } })
@@ -23,7 +22,7 @@ const pinnedStyle = { borderColor: '#e9c879', boxShadow: '0 0 0 1px #f0d490 inse
               <span v-if="a.is_pinned" class="pin-tag"><AppIcon name="pin" :width="13" :height="13" />Tersemat</span>
               <UiBadge :kind="CAT_TONE[a.category]">{{ CAT_LABEL[a.category] }}</UiBadge>
             </div>
-            <span class="muted" style="font-size:13px"><AppIcon name="calendar" :width="14" :height="14" style="vertical-align:-2px;margin-right:5px" />{{ DB.idDate(a.publish_date) }}</span>
+            <span class="muted" style="font-size:13px"><AppIcon name="calendar" :width="14" :height="14" style="vertical-align:-2px;margin-right:5px" />{{ idDate(a.publish_date) }}</span>
           </div>
           <h2 style="font-size:21px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;cursor:pointer" @click="emit('open', a)">{{ a.title }}</h2>
           <div v-if="a.author_name" class="muted" style="font-size:13px;margin-top:6px">oleh {{ a.author_name }}</div>

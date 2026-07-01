@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 defineProps({ kind: { type: String, default: 'blue' }, icon: { type: String, default: 'info' } })
 </script>
 

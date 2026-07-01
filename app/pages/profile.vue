@@ -1,19 +1,46 @@
-<script setup>
-import { reactive, ref } from 'vue'
-import { DB } from '~/data/db'
+<script setup lang="ts">
+import { reactive, ref, computed } from 'vue'
 
-const u = DB.user
-const f = reactive({ full_name: u.full_name, phone_number: u.phone_number })
+const { user, setSession } = useAuth()
+const api = useApiClient()
+const toast = useToast()
+
+const u = computed(() => user.value || {})
+const f = reactive({ full_name: u.value.full_name || '', phone_number: u.value.phone_number || '' })
 // PUT /profile → notification_preferences (free-form JSONB). Keys per frontend-api-guide §3.
-const notif = reactive({ allow_push_notification: true, allow_whatsapp_gateway: false })
+const np = u.value.notification_preferences || {}
+const notif = reactive({
+  allow_push_notification: np.allow_push_notification ?? true,
+  allow_whatsapp_gateway: np.allow_whatsapp_gateway ?? false,
+})
 const saved = ref(false)
+const saving = ref(false)
 const touch = () => { saved.value = false }
+
+const save = async () => {
+  saving.value = true
+  try {
+    const d = await api.updateProfile({
+      full_name: f.full_name,
+      phone_number: f.phone_number || null,
+      notification_preferences: { ...notif },
+    })
+    const token = import.meta.client ? localStorage.getItem('chms_token') : ''
+    setSession(token, { ...user.value, ...d })
+    saved.value = true
+    toast.success('Profil & preferensi berhasil diperbarui.')
+  } catch (e) {
+    toast.error(e.message || 'Gagal menyimpan profil.')
+  } finally {
+    saving.value = false
+  }
+}
 
 const prefs = [
   ['allow_push_notification', 'Push Notification', 'Terima notifikasi langsung di aplikasi ChurchMS', 'bell'],
   ['allow_whatsapp_gateway', 'WhatsApp Gateway', 'Terima warta penting melalui pesan WhatsApp', 'phone'],
 ]
-const identity = () => [['ID Pengguna', '#' + u.id], ['Telepon', f.phone_number], ['Status Akun', 'Aktif']]
+const identity = computed(() => [['ID Pengguna', u.value.id ? '#' + u.value.id : '—'], ['Telepon', f.phone_number || '—'], ['Status Akun', 'Aktif']])
 </script>
 
 <template>
@@ -50,7 +77,7 @@ const identity = () => [['ID Pengguna', '#' + u.id], ['Telepon', f.phone_number]
           </div>
           <div style="margin-top:16px"><UiNote kind="blue" icon="info">Preferensi disimpan sebagai JSONB bebas — kanal WhatsApp masih pending_integration.</UiNote></div>
           <div class="row" style="margin-top:20px;gap:10px">
-            <button class="btn btn-primary" @click="saved = true"><AppIcon name="check" />Simpan Perubahan</button>
+            <button class="btn btn-primary" :disabled="saving" @click="save"><AppIcon name="check" />{{ saving ? 'Menyimpan…' : 'Simpan Perubahan' }}</button>
             <span v-if="saved" class="badge badge-emerald fade-in"><AppIcon name="check" :width="12" :height="12" />Profil &amp; preferensi berhasil diperbarui</span>
           </div>
         </div>
@@ -72,15 +99,15 @@ const identity = () => [['ID Pengguna', '#' + u.id], ['Telepon', f.phone_number]
 
       <!-- Right rail -->
       <div class="card card-pad" style="text-align:center">
-        <div class="avatar" style="width:84px;height:84px;font-size:30px;margin:4px auto 16px">{{ DB.initials(f.full_name) }}</div>
-        <div style="font-size:19px;font-weight:700">{{ f.full_name }}</div>
+        <div class="avatar" style="width:84px;height:84px;font-size:30px;margin:4px auto 16px">{{ initials(f.full_name || u.email) }}</div>
+        <div style="font-size:19px;font-weight:700">{{ f.full_name || '—' }}</div>
         <div class="muted" style="font-size:13.5px;margin-top:3px">{{ u.email }}</div>
         <div class="row" style="justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap">
-          <span v-for="r in u.roles" :key="r" class="badge badge-blue"><AppIcon name="shield" :width="12" :height="12" />{{ r }}</span>
+          <span v-for="r in (u.roles || [])" :key="r" class="badge badge-blue"><AppIcon name="shield" :width="12" :height="12" />{{ r }}</span>
         </div>
         <hr class="divider" style="margin:20px 0" >
         <div style="display:flex;flex-direction:column;gap:12px;text-align:left">
-          <div v-for="[k, v] in identity()" :key="k" class="row" style="justify-content:space-between">
+          <div v-for="[k, v] in identity" :key="k" class="row" style="justify-content:space-between">
             <span class="muted" style="font-size:13px">{{ k }}</span>
             <span style="font-size:13px;font-weight:600">{{ v }}</span>
           </div>

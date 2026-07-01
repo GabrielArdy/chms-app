@@ -1,6 +1,5 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
-import { DB } from '~/data/db'
 import { CAT_LABEL, CAT_TONE, STATUS_LABEL } from '~/data/announce'
 import { STATUS_BADGE } from '~/data/constants'
 
@@ -9,9 +8,9 @@ const emit = defineEmits(['close', 'edit', 'flash'])
 
 const meta = computed(() => [
   ['Penulis', props.a.author_name || '—'],
-  ['Tanggal Tayang', DB.idDate(props.a.publish_date)],
-  ['Tanggal Berakhir', props.a.expiry_date ? DB.idDate(props.a.expiry_date) : 'Tanpa batas'],
-  ['Diperbarui', DB.idDate(props.a.updated_at || props.a.publish_date)],
+  ['Tanggal Tayang', idDate(props.a.publish_date)],
+  ['Tanggal Berakhir', props.a.expiry_date ? idDate(props.a.expiry_date) : 'Tanpa batas'],
+  ['Diperbarui', idDate(props.a.updated_at || props.a.publish_date)],
 ])
 const onDownload = (f) => emit('flash', 'URL unduhan dibuat untuk "' + f.original_name + '" (kedaluwarsa 15 menit).')
 </script>

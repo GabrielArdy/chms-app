@@ -4,4 +4,6 @@ export const CAT_TONE = { General: 'slate', Youth: 'gold', 'Sunday School': 'blu
 export const STATUS_LABEL = { Published: 'Tayang', Draft: 'Draf', Archived: 'Arsip' }
 export const TODAY = '2026-06-15'
 export const PAGE_SIZE = 8
-export const sortFeed = (a, b) => (b.is_pinned - a.is_pinned) || (a.publish_date < b.publish_date ? 1 : -1)
+type FeedSortable = { is_pinned?: boolean; publish_date: string }
+export const sortFeed = (a: FeedSortable, b: FeedSortable) =>
+  (Number(b.is_pinned) - Number(a.is_pinned)) || (a.publish_date < b.publish_date ? 1 : -1)

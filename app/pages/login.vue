@@ -1,33 +1,40 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 definePageMeta({ layout: false })
 
 const router = useRouter()
-const { login } = useAuth()
+const { setSession } = useAuth()
+const api = useApiClient()
 
 const step = ref('login') // login | 2fa
+let tempToken = ''
 
 // ---- Login ----
-const email = ref('bendahara@gereja.org')
-const pw = ref('PasswordAm4n!')
+const email = ref('')
+const pw = ref('')
 const show = ref(false)
-const err = ref(false)
+const err = ref('')
 const loading = ref(false)
 
-const submitLogin = () => {
-  err.value = false; loading.value = true
-  setTimeout(() => {
+const submitLogin = async () => {
+  err.value = ''; loading.value = true
+  try {
+    const d = await api.login({ email: email.value, password: pw.value })
+    if (d.requires_2fa) { tempToken = d.token_temporary; step.value = '2fa' }
+    else { setSession(d.token, d.user); router.push('/') }
+  } catch (e) {
+    err.value = e.message || 'Email atau kata sandi salah. Silakan coba lagi.'
+  } finally {
     loading.value = false
-    if (pw.value.length < 1 || !email.value.includes('@')) { err.value = true; return }
-    step.value = '2fa'
-  }, 650)
+  }
 }
 
 // ---- 2FA ----
 const code = reactive(['', '', '', '', '', ''])
 const otpErr = ref(false)
+const otpMsg = ref('')
 const otpLoading = ref(false)
 const boxes = ref([])
 
@@ -47,12 +54,20 @@ const onPaste = (e) => {
     e.preventDefault()
   }
 }
-const submitOtp = () => {
-  if (code.join('').length !== 6) { otpErr.value = true; return }
+const submitOtp = async () => {
+  otpMsg.value = ''
+  if (code.join('').length !== 6) { otpErr.value = true; otpMsg.value = 'Kode harus terdiri dari 6 digit.'; return }
   otpLoading.value = true
-  setTimeout(() => { otpLoading.value = false; login(); router.push('/') }, 700)
+  try {
+    const d = await api.verify2fa(code.join(''), tempToken)
+    setSession(d.token, d.user); router.push('/')
+  } catch (e) {
+    otpErr.value = true; otpMsg.value = e.message || 'Verifikasi gagal. Coba lagi.'
+  } finally {
+    otpLoading.value = false
+  }
 }
-const back = () => { step.value = 'login' }
+const back = () => { step.value = 'login'; otpErr.value = false; otpMsg.value = '' }
 </script>
 
 <template>
@@ -64,7 +79,7 @@ const back = () => { step.value = 'login' }
         <h1>Masuk ke akun Anda</h1>
         <div class="sub">Gunakan kredensial pelayanan yang terdaftar di sekretariat.</div>
         <div v-if="err" style="margin-bottom:18px">
-          <UiNote kind="red" icon="alert">Email atau kata sandi salah. Silakan coba lagi.</UiNote>
+          <UiNote kind="red" icon="alert">{{ err }}</UiNote>
         </div>
         <UiField label="Email">
           <div class="input-group">
@@ -105,7 +120,7 @@ const back = () => { step.value = 'login' }
         <h1>Verifikasi 2 Langkah</h1>
         <div class="sub">Masukkan 6 digit kode dari aplikasi <b>Authenticator</b> Anda untuk melanjutkan sebagai Bendahara.</div>
         <div v-if="otpErr" style="margin-bottom:16px">
-          <UiNote kind="red" icon="alert">Kode harus terdiri dari 6 digit. ERR_FIN_MFA_INVALID.</UiNote>
+          <UiNote kind="red" icon="alert">{{ otpMsg }}</UiNote>
         </div>
         <div class="otp-row" @paste="onPaste">
           <input
@@ -122,9 +137,6 @@ const back = () => { step.value = 'login' }
         <button class="btn btn-primary btn-lg btn-block" type="submit" :disabled="otpLoading">
           {{ otpLoading ? 'Memverifikasi…' : 'Verifikasi & Masuk' }}<AppIcon v-if="!otpLoading" name="check" />
         </button>
-        <div style="margin-top:18px">
-          <UiNote kind="blue" icon="info">Untuk demo, masukkan 6 digit apa saja lalu lanjutkan.</UiNote>
-        </div>
       </form>
     </div>
   </div>

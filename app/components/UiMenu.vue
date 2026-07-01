@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 
 defineProps({ items: { type: Array, default: () => [] }, align: String })
