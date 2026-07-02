@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, nextTick } from 'vue'
+import { ref, reactive, nextTick, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 definePageMeta({ layout: false })
@@ -7,6 +7,28 @@ definePageMeta({ layout: false })
 const router = useRouter()
 const { setSession } = useAuth()
 const api = useApiClient()
+
+// ---- API health status (dev helper) ----
+// /health is un-enveloped and returns 503 (with body) when degraded — raw $fetch, not the unwrap client.
+const { apiBaseUrl } = useRuntimeConfig().public as { apiBaseUrl: string }
+const apiStatus = ref<'checking' | 'ok' | 'degraded' | 'down'>('checking')
+const checkApi = async () => {
+  apiStatus.value = 'checking'
+  try {
+    const d = await $fetch<{ status?: string }>('/health', { baseURL: apiBaseUrl, ignoreResponseError: true, timeout: 5000 })
+    apiStatus.value = d?.status === 'ok' ? 'ok' : 'degraded'
+  } catch {
+    apiStatus.value = 'down'
+  }
+}
+onMounted(checkApi)
+
+const apiStatusUi = computed(() => ({
+  checking: { dot: 'var(--on-surface-variant)', label: 'Memeriksa API…', pulse: true },
+  ok: { dot: 'var(--emerald)', label: 'API Siap', pulse: false },
+  degraded: { dot: 'var(--gold)', label: 'API Degradasi', pulse: false },
+  down: { dot: 'var(--error)', label: 'API Tidak Terhubung', pulse: false },
+}[apiStatus.value]))
 
 const step = ref('login') // login | 2fa
 let tempToken = ''
@@ -72,6 +94,15 @@ const back = () => { step.value = 'login'; otpErr.value = false; otpMsg.value = 
 
 <template>
   <div class="auth-stage">
+    <button
+      type="button"
+      :title="'GET ' + (apiBaseUrl || '(apiBaseUrl kosong)') + '/health — klik untuk cek ulang'"
+      style="position:fixed;top:14px;right:14px;z-index:60;display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid var(--outline-variant);background:var(--surface);color:var(--on-surface-variant);font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)"
+      @click="checkApi"
+    >
+      <span :style="{ width: '8px', height: '8px', borderRadius: '50%', background: apiStatusUi.dot, animation: apiStatusUi.pulse ? 'fade .9s ease-in-out infinite alternate' : 'none' }" />
+      {{ apiStatusUi.label }}
+    </button>
     <AppAuthArt />
     <div class="auth-form-col">
       <!-- LOGIN -->
